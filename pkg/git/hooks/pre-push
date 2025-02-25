@@ -1,0 +1,40 @@
+#!/bin/sh
+
+set -e
+
+# 日志函数
+log() {
+    echo "[ai-cr-tool] $1"
+}
+
+# 获取要推送的提交范围
+log "正在分析推送内容..."
+z40=0000000000000000000000000000000000000000
+
+while read local_ref local_sha remote_ref remote_sha
+do
+    if [ "$local_sha" = $z40 ]; then
+        log "检测到分支删除操作，跳过检查"
+        continue
+    fi
+
+    if [ "$remote_sha" = $z40 ]; then
+        log "检测到新分支，将评审所有提交"
+        range="$local_sha"
+    else
+        log "检测到分支更新，将评审新增提交"
+        range="$remote_sha..$local_sha"
+    fi
+
+    # 运行代码评审工具
+    log "开始运行代码评审..."
+    review_result=$(ai-cr-tool review --commit-range "$range" 2>&1) || {
+        log "代码评审失败，请修复以下问题："
+        echo "$review_result" | sed 's/^/    /'
+        exit 1
+    }
+done
+
+# 评审通过
+log "代码评审通过 ✓"
+exit 0

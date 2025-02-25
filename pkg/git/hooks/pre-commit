@@ -1,0 +1,30 @@
+#!/bin/sh
+
+set -e
+
+# 日志函数
+log() {
+    echo "[ai-cr-tool] $1"
+}
+
+# 获取暂存区的文件列表
+log "正在获取暂存区文件列表..."
+files=$(git diff --cached --name-only --diff-filter=ACM)
+
+# 如果没有文件要提交，直接退出
+if [ -z "$files" ]; then
+    log "没有需要评审的文件，跳过检查"
+    exit 0
+fi
+
+# 运行代码评审工具
+log "开始运行代码评审..."
+review_result=$(ai-cr-tool review --files "$files" 2>&1) || {
+    log "代码评审失败，请修复以下问题："
+    echo "$review_result" | sed 's/^/    /'
+    exit 1
+}
+
+# 评审通过
+log "代码评审通过 ✓"
+exit 0
