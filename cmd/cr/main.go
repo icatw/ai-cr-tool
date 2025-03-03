@@ -34,6 +34,9 @@ func main() {
 	// 初始化代码分析器
 	analyzer := review.NewAnalyzer(gitClient)
 
+	// 启动进度显示
+	go cli.displayProgress(analyzer.Progress)
+
 	// 获取代码改动
 	var changes []review.FileChange
 	if opts.CommitRange != "" {
