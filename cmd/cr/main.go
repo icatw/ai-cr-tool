@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/icatw/ai-cr-tool/pkg/cache"
@@ -12,6 +13,7 @@ import (
 	"github.com/icatw/ai-cr-tool/pkg/git"
 	"github.com/icatw/ai-cr-tool/pkg/model"
 	"github.com/icatw/ai-cr-tool/pkg/review"
+	"github.com/icatw/ai-cr-tool/pkg/types"
 )
 
 func main() {
@@ -27,23 +29,40 @@ func main() {
 		log.Fatalf("获取当前工作目录失败: %v\n", err)
 	}
 	gitClient := git.NewGitClient(wd)
-	if gitClient == nil {
-		log.Fatalf("初始化Git客户端失败\n")
-	}
 
 	// 初始化代码分析器
 	analyzer := review.NewAnalyzer(gitClient)
 
 	// 获取代码改动
-	var changes []review.FileChange
-	if opts.CommitRange != "" {
+	var changes []types.FileChange
+	switch {
+	case opts.Files != "":
+		// 评审指定文件
+		files := strings.Split(opts.Files, ",")
+		changes, err = analyzer.AnalyzeFiles(files)
+	case opts.Staged:
+		// 评审已暂存的改动
+		changes, err = analyzer.AnalyzeStagedChanges()
+	case opts.CommitHash != "":
+		// 评审指定提交
+		changes, err = analyzer.AnalyzeCommit(opts.CommitHash)
+	case opts.CommitRange != "":
+		// 评审提交范围
 		changes, err = analyzer.AnalyzeChanges(opts.CommitRange, "")
-	} else {
-		// 默认分析最新的改动
-		changes, err = analyzer.AnalyzeChanges("HEAD~1", "HEAD")
+	default:
+		// 默认评审所有未提交的改动
+		changes, err = analyzer.AnalyzeWorkingDirChanges()
 	}
+
 	if err != nil {
 		log.Fatalf("分析代码改动失败: %v\n", err)
+	}
+
+	if len(changes) == 0 {
+		if !opts.Quiet {
+			fmt.Println("没有发现需要评审的代码改动")
+		}
+		return
 	}
 
 	// 初始化缓存
@@ -56,16 +75,13 @@ func main() {
 	// 初始化AI模型客户端
 	deepseekKey := os.Getenv("DEEPSEEK_API_KEY")
 	qwenKey := os.Getenv("QWEN_API_KEY")
-	// 创建模型配置，只使用默认模型
 	modelCfg := model.NewModelConfigWithKeys(deepseekKey, "", "", qwenKey)
 
-	// 创建模型管理器
 	modelManager, err := model.NewModelManager(modelCfg)
 	if err != nil {
 		log.Fatalf("初始化模型管理器失败: %v\n", err)
 	}
 
-	// 获取指定或默认的模型客户端
 	modelClient, err := modelManager.GetClient(opts.Model)
 	if err != nil {
 		log.Fatalf("获取模型客户端失败: %v\n", err)
@@ -76,20 +92,22 @@ func main() {
 
 	// 创建评审报告生成器
 	reporter := review.NewReporter("ai-cr-tool", "HEAD")
-	var issues []review.Issue
+	var issues []types.Issue
 
 	// 处理每个改动文件
 	for _, change := range changes {
+		if !opts.Quiet {
+			fmt.Printf("正在评审文件: %s\n", change.FilePath)
+		}
+
 		// 检查缓存
 		if reviewCache != nil {
 			if cached, err := reviewCache.Get(change.DiffContent); err == nil && cached != nil {
-				fmt.Printf("使用缓存的评审结果 - %s\n", change.FilePath)
-				issues = append(issues, review.Issue{
-					Title:       "AI代码评审结果",
+				issues = append(issues, types.Issue{
+					Title:       "缓存的评审结果",
 					FilePath:    change.FilePath,
-					Severity:    review.SeverityInfo,
 					Description: cached.ReviewResult,
-					Suggestion:  "请根据AI评审建议进行相应修改",
+					Severity:    types.SeverityInfo,
 				})
 				continue
 			}
@@ -112,13 +130,12 @@ func main() {
 			continue
 		}
 
-		// 添加评审结果到issues
-		issues = append(issues, review.Issue{
+		// 添加评审结果
+		issues = append(issues, types.Issue{
 			Title:       "AI代码评审结果",
 			FilePath:    change.FilePath,
-			Severity:    review.SeverityInfo,
 			Description: resp.Choices[0].Message.Content,
-			Suggestion:  "请根据AI评审建议进行相应修改",
+			Severity:    types.SeverityInfo,
 		})
 
 		// 缓存评审结果
@@ -131,36 +148,24 @@ func main() {
 	}
 
 	// 生成评审报告
-	reportContent, err := reporter.Generate(issues, review.ReportFormat(opts.OutputFormat))
+	format, err := review.ParseReportFormat(opts.OutputFormat)
+	if err != nil {
+		log.Fatalf("不支持的输出格式: %v\n", err)
+	}
+
+	reportContent, err := reporter.Generate(issues, format)
 	if err != nil {
 		log.Fatalf("生成评审报告失败: %v\n", err)
 	}
 
-	// 创建输出目录
-	outputDir := filepath.Join(wd, "cr-result")
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
-		log.Fatalf("创建输出目录失败: %v\n", err)
-	}
-
-	// 生成输出文件名
-	timestamp := time.Now().Format("20060102_150405")
-	outputFileName := fmt.Sprintf("review_%s.%s", timestamp, opts.OutputFormat)
-	outputPath := filepath.Join(outputDir, outputFileName)
-
-	// 如果指定了输出文件，使用指定的路径
+	// 保存报告
 	if opts.OutputFile != "" {
-		outputPath = opts.OutputFile
+		if err := os.WriteFile(opts.OutputFile, []byte(reportContent), 0644); err != nil {
+			log.Fatalf("保存评审报告失败: %v\n", err)
+		}
+		fmt.Printf("评审报告已保存到: %s\n", opts.OutputFile)
+	} else {
+		fmt.Println("\n评审报告:")
+		fmt.Println(reportContent)
 	}
-
-	// 保存评审报告到文件
-	if err := os.WriteFile(outputPath, reportContent, 0644); err != nil {
-		log.Fatalf("保存评审报告失败: %v\n", err)
-	}
-	fmt.Printf("评审报告已保存到: %s\n", outputPath)
-
-	// 同时输出到控制台
-	// if opts.OutputFile == "" {
-	// 	fmt.Println("\n评审报告内容:")
-	// 	fmt.Println(reportContent)
-	// }
 }

@@ -9,11 +9,14 @@ import (
 type Options struct {
 	// 评审范围相关选项
 	Files       string
+	Staged      bool
+	CommitHash  string
 	CommitRange string
 
 	// 输出相关选项
 	OutputFormat string
 	OutputFile   string
+	Quiet        bool
 
 	// AI模型选项
 	Model string
@@ -28,11 +31,14 @@ func ParseFlags() (*Options, error) {
 
 	// 评审范围选项
 	flag.StringVar(&opts.Files, "files", "", "指定要评审的文件列表，多个文件用逗号分隔")
+	flag.BoolVar(&opts.Staged, "staged", false, "只评审已暂存(git add)的改动")
+	flag.StringVar(&opts.CommitHash, "commit", "", "评审指定的提交")
 	flag.StringVar(&opts.CommitRange, "commit-range", "", "指定要评审的提交范围，例如：HEAD~1..HEAD")
 
 	// 输出选项
 	flag.StringVar(&opts.OutputFormat, "format", "markdown", "输出格式：markdown, html, pdf")
 	flag.StringVar(&opts.OutputFile, "output", "", "输出文件路径，默认输出到标准输出")
+	flag.BoolVar(&opts.Quiet, "quiet", false, "静默模式，只输出错误信息")
 
 	// AI模型选项
 	flag.StringVar(&opts.Model, "model", "", "指定使用的AI模型，可选值：qwen, deepseek, openai, chatglm")
