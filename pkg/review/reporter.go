@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/icatw/ai-cr-tool/pkg/types"
 )
 
 // ReportFormat 定义支持的报告格式
@@ -21,7 +23,7 @@ const (
 
 // Reporter 定义报告生成器接口
 type Reporter interface {
-	Generate(issues []Issue, format ReportFormat) ([]byte, error)
+	Generate(issues []types.Issue, format ReportFormat) ([]byte, error)
 }
 
 // DefaultReporter 默认报告生成器实现
@@ -39,7 +41,7 @@ func NewReporter(projectName, commitID string) Reporter {
 }
 
 // generateMarkdown 生成Markdown格式的报告
-func (r *DefaultReporter) generateMarkdown(issues []Issue) ([]byte, error) {
+func (r *DefaultReporter) generateMarkdown(issues []types.Issue) ([]byte, error) {
 	var buf bytes.Buffer
 
 	// 写入报告头部
@@ -50,7 +52,7 @@ func (r *DefaultReporter) generateMarkdown(issues []Issue) ([]byte, error) {
 	buf.WriteString(fmt.Sprintf("- 评审时间：%s\n\n", time.Now().Format("2006-01-02 15:04:05")))
 
 	// 按严重程度分类统计
-	severityCount := make(map[string]int)
+	severityCount := make(map[types.SeverityLevel]int)
 	for _, issue := range issues {
 		severityCount[issue.Severity]++
 	}
@@ -119,7 +121,7 @@ func (r *DefaultReporter) generateMarkdown(issues []Issue) ([]byte, error) {
 }
 
 // generateHTML 生成HTML格式的报告
-func (r *DefaultReporter) generateHTML(issues []Issue) ([]byte, error) {
+func (r *DefaultReporter) generateHTML(issues []types.Issue) ([]byte, error) {
 	var buf bytes.Buffer
 
 	// 写入HTML头部
@@ -169,7 +171,7 @@ func (r *DefaultReporter) generateHTML(issues []Issue) ([]byte, error) {
 	</div>`, r.ProjectName, r.CommitID, time.Now().Format("2006-01-02 15:04:05")))
 
 	// 统计信息
-	severityCount := make(map[string]int)
+	severityCount := make(map[types.SeverityLevel]int)
 	for _, issue := range issues {
 		severityCount[issue.Severity]++
 	}
@@ -270,7 +272,7 @@ func (r *DefaultReporter) generateHTML(issues []Issue) ([]byte, error) {
 }
 
 // 辅助函数：获取唯一文件列表
-func getUniqueFiles(issues []Issue) []string {
+func getUniqueFiles(issues []types.Issue) []string {
 	filesMap := make(map[string]bool)
 	for _, issue := range issues {
 		filesMap[issue.FilePath] = true
@@ -285,7 +287,7 @@ func getUniqueFiles(issues []Issue) []string {
 }
 
 // generatePDF 生成PDF格式的报告
-func (r *DefaultReporter) generatePDF(issues []Issue) ([]byte, error) {
+func (r *DefaultReporter) generatePDF(issues []types.Issue) ([]byte, error) {
 	// 首先生成HTML报告
 	htmlContent, err := r.generateHTML(issues)
 	if err != nil {
@@ -347,7 +349,7 @@ func (r *DefaultReporter) generatePDF(issues []Issue) ([]byte, error) {
 }
 
 // Generate 生成评审报告
-func (r *DefaultReporter) Generate(issues []Issue, format ReportFormat) ([]byte, error) {
+func (r *DefaultReporter) Generate(issues []types.Issue, format ReportFormat) ([]byte, error) {
 	switch format {
 	case MarkdownFormat:
 		return r.generateMarkdown(issues)
@@ -361,7 +363,7 @@ func (r *DefaultReporter) Generate(issues []Issue, format ReportFormat) ([]byte,
 }
 
 // summarizeSuggestions 汇总分析评审问题中的建议，生成整体优化建议列表
-func summarizeSuggestions(issues []Issue) []string {
+func summarizeSuggestions(issues []types.Issue) []string {
 	// 使用map对建议进行分类和去重
 	suggestionMap := make(map[string]int)
 	for _, issue := range issues {
@@ -392,4 +394,18 @@ func summarizeSuggestions(issues []Issue) []string {
 	}
 
 	return result
+}
+
+// ParseReportFormat 将字符串转换为ReportFormat
+func ParseReportFormat(format string) (ReportFormat, error) {
+	switch format {
+	case string(MarkdownFormat):
+		return MarkdownFormat, nil
+	case string(HTMLFormat):
+		return HTMLFormat, nil
+	case string(PDFFormat):
+		return PDFFormat, nil
+	default:
+		return "", fmt.Errorf("不支持的报告格式: %s", format)
+	}
 }

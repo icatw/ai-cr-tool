@@ -5,17 +5,8 @@ import (
 	"strings"
 
 	"github.com/icatw/ai-cr-tool/pkg/git"
+	"github.com/icatw/ai-cr-tool/pkg/types"
 )
-
-// FileChange 表示文件改动的信息
-type FileChange struct {
-	FilePath    string
-	ChangeType  string // "added", "modified", "deleted"
-	OldContent  string
-	NewContent  string
-	DiffContent string
-	Lines       []string // 代码行内容
-}
 
 // Analyzer 代码分析器
 type Analyzer struct {
@@ -28,7 +19,7 @@ func NewAnalyzer(gitClient *git.GitClient) *Analyzer {
 }
 
 // AnalyzeChanges 分析代码改动
-func (a *Analyzer) AnalyzeChanges(from, to string) ([]FileChange, error) {
+func (a *Analyzer) AnalyzeChanges(from, to string) ([]types.FileChange, error) {
 	// 获取改动的文件列表
 	files, err := a.gitClient.GetChangedFiles(from, to)
 	if err != nil {
@@ -42,9 +33,9 @@ func (a *Analyzer) AnalyzeChanges(from, to string) ([]FileChange, error) {
 	}
 
 	// 解析差异内容
-	changes := make([]FileChange, 0, len(files))
+	changes := make([]types.FileChange, 0, len(files))
 	for _, file := range files {
-		change := FileChange{
+		change := types.FileChange{
 			FilePath: file,
 		}
 
@@ -99,4 +90,38 @@ func extractFileDiff(diff, filePath string) string {
 	}
 
 	return fileDiff.String()
+}
+
+// AnalyzeFiles 分析指定文件的改动
+func (a *Analyzer) AnalyzeFiles(files []string) ([]types.FileChange, error) {
+	var changes []types.FileChange
+	for _, file := range files {
+		diff, err := a.gitClient.GetFileDiff(file)
+		if err != nil {
+			return nil, fmt.Errorf("获取文件 %s 的改动失败: %v", file, err)
+		}
+		if diff != "" {
+			changes = append(changes, types.FileChange{
+				FilePath:    file,
+				ChangeType:  "modified",
+				DiffContent: diff,
+			})
+		}
+	}
+	return changes, nil
+}
+
+// AnalyzeStagedChanges 分析已暂存的改动
+func (a *Analyzer) AnalyzeStagedChanges() ([]types.FileChange, error) {
+	return a.gitClient.GetStagedChanges()
+}
+
+// AnalyzeCommit 分析指定提交的改动
+func (a *Analyzer) AnalyzeCommit(commitHash string) ([]types.FileChange, error) {
+	return a.gitClient.GetCommitChanges(commitHash)
+}
+
+// AnalyzeWorkingDirChanges 分析工作区的改动
+func (a *Analyzer) AnalyzeWorkingDirChanges() ([]types.FileChange, error) {
+	return a.gitClient.GetWorkingDirChanges()
 }

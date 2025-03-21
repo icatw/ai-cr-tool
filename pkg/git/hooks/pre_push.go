@@ -2,14 +2,16 @@ package hooks
 
 import (
 	"fmt"
-	"github.com/icatw/ai-cr-tool/pkg/cache"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/icatw/ai-cr-tool/pkg/cache"
+
 	"github.com/icatw/ai-cr-tool/pkg/git"
 	"github.com/icatw/ai-cr-tool/pkg/model"
 	"github.com/icatw/ai-cr-tool/pkg/review"
+	"github.com/icatw/ai-cr-tool/pkg/types"
 )
 
 // PrePushHook 处理pre-push钩子的逻辑
@@ -143,14 +145,14 @@ func (h *PrePushHook) reviewRef(ref RefInfo) error {
 	reporter := review.NewReporter("ai-cr-tool", ref.NewHash)
 
 	// 分析代码问题
-	var issues []review.Issue
+	var issues []types.Issue
 	for _, change := range changes {
 		// 检查缓存
 		if cached, err := cacheManager.Get(change.DiffContent); err == nil && cached != nil {
-			issues = append(issues, review.Issue{
+			issues = append(issues, types.Issue{
 				Title:       "AI代码评审结果",
 				FilePath:    change.FilePath,
-				Severity:    review.SeverityInfo,
+				Severity:    types.SeverityInfo,
 				Description: cached.ReviewResult,
 				Suggestion:  "请根据AI评审建议进行相应修改",
 			})
@@ -182,10 +184,10 @@ func (h *PrePushHook) reviewRef(ref RefInfo) error {
 		}
 
 		// 添加评审结果
-		issues = append(issues, review.Issue{
+		issues = append(issues, types.Issue{
 			Title:       "AI代码评审结果",
 			FilePath:    change.FilePath,
-			Severity:    review.SeverityInfo,
+			Severity:    types.SeverityInfo,
 			Description: reviewResult,
 			Suggestion:  "请根据AI评审建议进行相应修改",
 		})
